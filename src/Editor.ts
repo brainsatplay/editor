@@ -301,17 +301,17 @@ export class Editor extends LitElement {
       return html`
           <div>
             ${this.ui}
-            <visualscript-panel>
-            <visualscript-tab name="Graph">
-            ${this.graph}
-          </visualscript-tab>
-                <visualscript-tab name="Files">
-                <div id="files">
-                  ${this.tree}
-                  ${this.files}
-                  </div>
-                </visualscript-tab>
-            </visualscript-panel>
+                <visualscript-panel>
+                  <visualscript-tab name="Graph">
+                    ${this.graph}
+                  </visualscript-tab>
+                  <visualscript-tab name="Files">
+                  <div id="files">
+                    ${this.tree}
+                    ${this.files}
+                    </div>
+                  </visualscript-tab>
+                </visualscript-panel>
           </div>
       `
 
