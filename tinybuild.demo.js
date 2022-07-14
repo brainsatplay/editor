@@ -27,7 +27,6 @@ const config = {
         hotreload: 5000,  //hotreload websocket server port
         //watch: ['../'], //watch additional directories other than the current working directory
         pwa: "demo/service-worker.js",  //pwa mode? Injects service worker registry code in (see pwa README.md)
-        ignore: ['app'],
         python: false,//7000,  //quart server port (configured via the python server script file still)
         python_node: 7001, //websocket relay port (relays messages to client from nodejs that were sent to it by python)
         errpage: "node_modules/tinybuild/tinybuild/node_server/other/404.html",  //default error page, etc.
