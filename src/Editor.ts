@@ -19,11 +19,9 @@ export class Editor extends LitElement {
     return css`
 
     :host { 
+      display: block;
       width: 100%;
       height: 100%;
-    }
-
-    :host * {
       box-sizing: border-box;
     }
 
@@ -73,8 +71,10 @@ export class Editor extends LitElement {
     modal = new Modal()
     ui = document.createElement('visualscript-tab') 
     files = new Panel()
+    filesTab = new Tab({name: 'Files'})
+
     info = new Panel()
-    fileHistory: {[x:string]: any} = {}
+    history: {[x:string]: any} = {}
     fileUpdate: number = 0
     graph = new GraphEditor()
     properties = new ObjectEditor()
@@ -86,6 +86,13 @@ export class Editor extends LitElement {
       this.ui.setAttribute('name', 'UI')
       if (props.app) this.setApp(props.app)
       if (props.ui) this.setUI(props.ui)
+
+      // Setup Files Tab
+      const div = document.createElement('div')
+      div.id = 'files'
+      div.appendChild(this.tree)
+      div.appendChild(this.files)
+      this.filesTab.appendChild(div)
     }
 
     setApp = (app) => {
@@ -122,7 +129,7 @@ export class Editor extends LitElement {
         }
       })
 
-      this.graph.set(this.app.active) // Set tree on graph
+      this.graph.set(this.app.active ?? this.app) // Set tree on graph
     }
 
     setUI = (ui) => {
@@ -144,7 +151,7 @@ export class Editor extends LitElement {
       // })
       this.files.reset() 
 
-      const previousTabs = new Set(Object.keys(this.fileHistory))
+      const previousTabs = new Set(Object.keys(this.history))
 
       const allProperties = {}
 
@@ -152,6 +159,9 @@ export class Editor extends LitElement {
       // const isValidPlugin = this.isPlugin(f)
 
       const openTabs: {[x:string]: any} = {}
+
+      // show/hide files tab
+      if (this.app.filesystem) {
 
       // Add Tab On Click
       this.tree.oncreate = async (type, item) => {
@@ -163,29 +173,21 @@ export class Editor extends LitElement {
         }
       }
 
-      this.tree.onClick = async (key, f) => {
+      this.tree.onClick = async (key, obj) => {
 
-        const existingTab = this.files.tabs.get(f.path)
+        const isFile = !!obj.path
+        const id = obj.path ?? key
+        const existingTab = this.files.tabs.get(id)
         if (!existingTab){
 
-          let metadata = await this.app.plugins.metadata(f.path) ?? await f.body
-          console.log(metadata, await f.body)
-
-          const module = await this.app.plugins.module(f.path)
-          const pkg = await this.app.plugins.package(f.path)
-
-          // Merge package with metadata
-          if (pkg) metadata = Object.assign(JSON.parse(JSON.stringify(pkg)), metadata)
-          console.log(metadata, module, pkg)
-
-        let tabInfo = this.fileHistory[f.path]
+        let tabInfo = this.history[id]
         // const plugin = this.app.plugins.plugins[f.path]
   
-        previousTabs.delete(f.path)
+        previousTabs.delete(id)
 
         const tab = new Tab({
           close: true,
-          name: f.path
+          name: id
         })
 
         if (tabInfo) tabInfo.tab = tab
@@ -198,12 +200,14 @@ export class Editor extends LitElement {
           const codeTab = new Tab({name: "File"});
 
           // Conditionally Show Information
-          const isPlugin = this.isPlugin(f)
-          if (isPlugin){
-            const infoTab = new Tab({name: 'Info'})
-            tabInfo.plugin = new Plugin()
-            infoTab.appendChild(tabInfo.plugin)
-            tabInfo.container.addTab(infoTab)
+          if (isFile) {
+            const isPlugin = this.isPlugin(obj)
+            if (isPlugin){
+              const infoTab = new Tab({name: 'Info'})
+              tabInfo.plugin = new Plugin()
+              infoTab.appendChild(tabInfo.plugin)
+              tabInfo.container.addTab(infoTab)
+            }
           }
 
           // Show Property Editor for Objects (including esm modules)
@@ -215,53 +219,81 @@ export class Editor extends LitElement {
           // }
 
           // Always Show Code Editor
-          tabInfo.code = new CodeEditor()
-          codeTab.appendChild(tabInfo.code)
-          tabInfo.container.addTab(codeTab)
+          if (isFile){
+            tabInfo.code = new CodeEditor()
+            codeTab.appendChild(tabInfo.code)
+            tabInfo.container.addTab(codeTab)
+          }
         }
 
         tab.appendChild(tabInfo.container)
         this.files.addTab(tab, true)
-        this.fileHistory[f.path] = tabInfo
+        this.history[id] = tabInfo
         
         // ---------- Update Editors ----------
 
+        const canGet = {
+          metadata: this.app.plugins.metadata,
+          package: this.app.plugins.package,
+          module: this.app.plugins.module
+        }
+
+        let metadata = (canGet.metadata) ? (await this.app.plugins.metadata(obj.path) ?? await obj.body) : undefined
+        const module = (canGet.module) ? await this.app.plugins.module(obj.path) : obj.operator
+        const pkg = (canGet.package) ? await this.app.plugins.package(obj.path) : undefined
+
+        // Merge package with metadata
+        if (pkg) metadata = Object.assign(JSON.parse(JSON.stringify(pkg)), metadata)
+
         // Plugin Info
-        if (tabInfo.plugin) tabInfo.plugin.set( module, metadata )
+        if (tabInfo.plugin) {
+          tabInfo.plugin.set( module, metadata )
+        }
 
         // Object Editor
         if (tabInfo.object){
           tabInfo.object.set(module)
-          tabInfo.object.header = metadata.name ?? f.name
+          tabInfo.object.header = metadata.name ?? obj.name ?? obj.tag
         }
 
         // Code Editor
-        const fileText = await f.text
-        tabInfo.code.value = fileText
+        if (tabInfo.code){
+          const text = (isFile) ? await obj.text : obj.operator.toString()
+          tabInfo.code.value = text
 
-        tabInfo.code.onInput = (text) => f.text = text,
-        tabInfo.code.onSave = async () => {
-            await f.save()
-            await this.app.start()
+          let tmpVar = undefined
+          const tempSave = (isFile) ? (text) => obj.text = text : (text) => tmpVar = text
+          tabInfo.code.onInput = tempSave,
+          tabInfo.code.onSave = async () => {
+
+              if (isFile) await obj.save()
+              else obj.operator = (0,eval)(tmpVar)
+
+              await this.app.start()
+          }
         }
 
-        openTabs[f.path] = tabInfo.tab
+        openTabs[id] = tabInfo.tab
       } else {
         existingTab.toggle.select()
       }
     } 
+  }
+
 
     this.properties.set(allProperties)
 
     // Remove Tabs That No Longer Exist
     previousTabs.forEach(str => {
-      const info = this.fileHistory[str]
+      const info = this.history[str]
       info.tab.remove() // Remove
-      delete this.fileHistory[str]
+      delete this.history[str]
     })
 
-    // Actually Display Tree
-    this.tree.set(this.app.filesystem.files.system)
+
+    let treeObject = this.app.filesystem?.files?.system
+    this.tree.set(treeObject ?? {})
+
     this.fileUpdate = this.fileUpdate + 1
 
     }
@@ -305,12 +337,7 @@ export class Editor extends LitElement {
                   <visualscript-tab name="Graph">
                     ${this.graph}
                   </visualscript-tab>
-                  <visualscript-tab name="Files">
-                  <div id="files">
-                    ${this.tree}
-                    ${this.files}
-                    </div>
-                  </visualscript-tab>
+                  ${this.app.filesystem ? this.filesTab : ''}
                 </visualscript-panel>
           </div>
       `
@@ -318,4 +345,4 @@ export class Editor extends LitElement {
     }
   }
   
-  customElements.define('visualscript-editor', Editor);
+  customElements.define('brainsatplay-editor', Editor);

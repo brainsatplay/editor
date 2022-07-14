@@ -1450,8 +1450,8 @@ var App = class {
         }
       }));
       graph.edges.forEach(([outputInfo, inputInfo]) => {
-        let [output, outputPort] = outputInfo.split(":");
-        let [input, inputPort] = inputInfo.split(":");
+        let [output, outputPort] = outputInfo.split(".");
+        let [input, inputPort] = inputInfo.split(".");
         if (!("children" in tree[output]))
           tree[output].children = [];
         tree[output].children.push(input);

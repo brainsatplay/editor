@@ -103,7 +103,6 @@ async function start(input){
     }
 
    const ok = await app.start(input).catch(e => console.error('Invalid App', e))
-
     if (ok) editor.setGraph(app.active.graph)
 
 }
