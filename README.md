@@ -1,5 +1,5 @@
 # editor
-A filesystem editor for Brains@Play applications.
+A low-code editor for [brainsatplay](https://github.com/brainsatplay/brainsatplay) applications.
 
 ## Concepts
 An **app** is a directory that contains an index.js file with either (1) a configuration object, or (2) an exported brainsatplay Graph instance.

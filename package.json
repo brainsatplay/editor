@@ -1,7 +1,7 @@
 {
     "name": "brainsatplay-editor",
     "version": "0.0.0",
-    "description": "A low-code editor for Brains@Play applications",
+    "description": "A low-code editor for brainsatplay applications.",
     "main": "dist/index.js",
     "module": "dist/index.esm.js",
     "types": "dist/src/index.d.ts",
