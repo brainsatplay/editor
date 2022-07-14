@@ -5,7 +5,7 @@ import { LitElement, html, css } from 'lit';
 import { Plugin } from './Plugin';
 
 // Visualscript Dependencies
-import { Tab, Panel, Tree, CodeEditor, ObjectEditor, GraphEditor, Modal, global } from "../external/visualscript/index.esm.js"
+import { Tab, Panel, Tree, CodeEditor, ObjectEditor, GraphEditor, Modal, global } from "../external/visualscript/dist/index.esm.js"
 
 export type EditorProps = {
   app?: any, // brainsatplay.editable.App
@@ -70,15 +70,15 @@ export class Editor extends LitElement {
     }
 
     app: any
-    modal: Modal = new Modal()
+    modal = new Modal()
     ui = document.createElement('visualscript-tab') 
-    files: Panel = new Panel()
-    info: Panel = new Panel()
+    files = new Panel()
+    info = new Panel()
     fileHistory: {[x:string]: any} = {}
     fileUpdate: number = 0
-    graph: GraphEditor = new GraphEditor()
-    properties: ObjectEditor = new ObjectEditor()
-    tree: Tree = new Tree()
+    graph = new GraphEditor()
+    properties = new ObjectEditor()
+    tree = new Tree()
 
     constructor(props:EditorProps={}) {
       super();
@@ -151,7 +151,7 @@ export class Editor extends LitElement {
       // TODO: Only Show ESM at Top Level. Show editable things
       // const isValidPlugin = this.isPlugin(f)
 
-      const openTabs: {[x:string]: Tab} = {}
+      const openTabs: {[x:string]: any} = {}
 
       // Add Tab On Click
       this.tree.oncreate = async (type, item) => {

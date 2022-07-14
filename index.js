@@ -1,6 +1,6 @@
 // Import Dependencies
 import './src/index.js'
-import * as visualscript from './external/visualscript/index.esm.js'
+import * as visualscript from './external/visualscript/dist/index.esm.js'
 // import * as freerange from './external/freerange/index.esm.js'
 import * as brainsatplay from './external/brainsatplay/index.esm.js';
 
