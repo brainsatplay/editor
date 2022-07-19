@@ -6,7 +6,7 @@
       "outDir": "dist/", /* Redirect output structure to the directory. */
       "module": "es2020", /* KEEP THIS SO THAT WEBPACK BUILDS PROPERLY (cannot find "tslib") */
       "declaration": true, /* Generates corresponding '.d.ts' file. */
-      "lib": ["dom", "scripthost"],
+      "lib": ["dom", "scripthost", "es2020"],
       "importHelpers": true, /* Import emit helpers from 'tslib'. */
     //   "noEmitHelpers": true,
       "pretty": true, /* Stylize errors and messages using color and context (experimental). */

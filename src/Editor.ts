@@ -161,7 +161,7 @@ export class Editor extends LitElement {
       const openTabs: {[x:string]: any} = {}
 
       // show/hide files tab
-      if (this.app.filesystem) {
+      if (this.app?.filesystem) {
 
       // Add Tab On Click
       this.tree.oncreate = async (type, item) => {
@@ -320,6 +320,12 @@ export class Editor extends LitElement {
         new Tab({name: 'Help'}),
       ]
 
+      const panel = new Panel({minTabs: 2})
+      const graphTab = new Tab({name: 'Graph'})
+      graphTab.appendChild(this.graph)
+      panel.addTab(graphTab)
+      if (this.app?.filesystem) panel.addTab(this.filesTab)
+
       // return html`
       //     ${this.modal}
       //     <visualscript-tab-bar>
@@ -333,12 +339,7 @@ export class Editor extends LitElement {
       return html`
           <div>
             ${this.ui}
-                <visualscript-panel>
-                  <visualscript-tab name="Graph">
-                    ${this.graph}
-                  </visualscript-tab>
-                  ${this.app.filesystem ? this.filesTab : ''}
-                </visualscript-panel>
+            ${panel}
           </div>
       `
 

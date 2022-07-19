@@ -155,4 +155,4 @@ export class Plugin extends LitElement {
     }
   }
   
-  customElements.define('visualscript-plugin', Plugin);
+  customElements.define('brainatplay-plugin', Plugin);
