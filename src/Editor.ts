@@ -115,7 +115,19 @@ export class Editor extends LitElement {
             {
               text: 'Create new node',
               onclick: () => {
-                console.warn('MUST CREATE NODE')
+                  const tag = `Node${Math.floor(1000*Math.random())}`
+                    this.graph.workspace.addNode({
+                      info: {
+                        tag,
+                        nodes: new Map([['input', undefined]]),
+                        graph: this.graph.workspace.graph,
+                        operator: (input) => {
+                          console.log(`[${tag}]`, input)
+                          return input
+                        }
+                      },
+                  })
+                  this.graph.workspace.triggerUpdate()
             },
           },
              {
@@ -129,7 +141,7 @@ export class Editor extends LitElement {
         }
       })
 
-      this.graph.set(this.app.active ?? this.app) // Set tree on graph
+      this.graph.set(this.app.active.graph ?? this.app.graph) // Set tree on graph
     }
 
     setUI = (ui) => {

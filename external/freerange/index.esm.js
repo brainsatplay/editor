@@ -4802,7 +4802,6 @@ var objToString = (obj) => {
 
 // ../core/codecs/library/js/import.ts
 var esmImport = async (text) => {
-  console.log('Trying to import', text)
   const moduleDataURI = "data:text/javascript;base64," + btoa(text);
   let imported = await import(moduleDataURI);
   if (imported.default && Object.keys(imported).length === 1)
