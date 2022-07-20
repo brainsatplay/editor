@@ -3563,14 +3563,26 @@ var join = (...paths) => {
   const split = paths.map((path) => {
     return path.split("/");
   }).flat();
-  return split.join("/");
+  return split.reduce((a, b) => {
+    if (!a)
+      a = b;
+    else if (!b)
+      return a;
+    else if (a.split("/")[0] !== b)
+      a = a + "/" + b;
+    return a;
+  }, "");
 };
 var getBase = (path) => {
   return path.split("/").slice(0, -1).join("/");
 };
 var dynamicImport = async (url, type7) => {
-  const assert = {};
-  let imported = type7 ? await import(url) : await import(url, { assert: { type: "json" } });
+  let imported;
+  if (!type7) {
+    imported = await import(url);
+  } else {
+    imported = await import(url, { assert: { type: "json" } });
+  }
   if (imported.default)
     imported = imported.default;
   return imported;
@@ -3655,7 +3667,6 @@ var App = class {
   constructor(input, options = {}) {
     this.remote = false;
     this.packagePath = "/package.json";
-    this.pluginPath = "/.brainsatplay/index.plugins.json";
     this.graphPath = "/.brainsatplay/index.graph.json";
     this.ok = false;
     this.parentNode = document.body;
@@ -3676,53 +3687,24 @@ var App = class {
     };
     this.set = (input, name2) => {
       this.name = name2 ?? "graph";
-      if (!input)
-        input = ".";
-      this["#base"] = null;
-      this.base = null;
       this.package = null;
-      this.remote = false;
-      if (typeof input === "string") {
-        const url = this.getURL(input);
-        if (url) {
-          this.remote = true;
-          this["#base"] = url;
-        } else
-          this["#base"] = this.base = input;
-        this.info = null;
-      } else {
-        this.info = input;
-        const appMetadata = this.info[".brainsatplay"];
-        for (let key in appMetadata) {
-          if (key === "base")
-            this["#base"] = this.base = appMetadata[key];
-          else
-            appMetadata[key] = this.checkJSONConversion(appMetadata[key]);
-        }
-      }
-      this.ok = false;
-      this.tree = null;
+      if (input) {
+        this.plugins = this.setInfo(input);
+        this.ok = false;
+        this.tree = null;
+      } else
+        console.warn("no info specified.");
     };
-    this.setPlugins = async (plugins = this.info[".brainsatplay"].plugins) => {
-      this.info[".brainsatplay"].plugins = plugins;
+    this.setInfo = (info) => {
+      this.info = info;
+      const appMetadata = this.info[".brainsatplay"];
+      for (let key in appMetadata) {
+        appMetadata[key] = this.checkJSONConversion(appMetadata[key]);
+      }
       const pluginsObject = {};
-      if (this.base) {
-        for (const name2 in plugins) {
-          if (typeof plugins[name2] === "string") {
-            let plugin = await importFromOrigin(this.join(this.base, plugins[name2]), scriptLocation, !this.remote);
-            if (typeof plugin === "string") {
-              const datauri = "data:text/javascript;base64," + btoa(plugin);
-              plugin = await dynamicImport(datauri);
-            }
-            pluginsObject[name2] = plugin;
-          } else
-            pluginsObject[name2] = plugins[name2];
-        }
-      } else {
-        for (let key in this.info) {
-          if (key !== ".brainsatplay")
-            pluginsObject[key] = this.info[key];
-        }
+      for (let key in info) {
+        if (key !== ".brainsatplay")
+          pluginsObject[key] = info[key];
       }
       this.plugins = pluginsObject;
       return this.plugins;
@@ -3733,7 +3715,7 @@ var App = class {
       const nodes = Object.entries(graph.nodes ?? {});
       await Promise.all(nodes.map(async ([tag, info]) => {
         const [cls, id] = tag.split("_");
-        const clsInfo = this.plugins[cls];
+        const clsInfo = this.plugins[cls] ?? {};
         if (clsInfo[".brainsatplay"]) {
           const app = this.nested[tag] = new App(clsInfo, {
             name: tag,
@@ -3807,12 +3789,16 @@ var App = class {
     };
     this.setPackage = (pkg) => {
       this.package = pkg;
-      if (this["#base"])
-        this.base = this.join(this["#base"], this.getBase(this.package.main));
     };
     this.init = async (input) => {
       if (input)
         this.set(input);
+      if (!this.compile) {
+        if (!this.info)
+          return false;
+        else if (!this.info[".brainsatplay"])
+          return false;
+      }
       if (this.compile instanceof Function) {
         if (!this.info)
           this.info = {
@@ -3822,28 +3808,12 @@ var App = class {
         return;
       } else {
         if (!this.package) {
-          if (".brainsatplay" in this.info) {
-            const pkg = this.info[".brainsatplay"].package;
-            if (pkg)
-              this.setPackage(pkg);
-            else
-              console.error("No package.json has been included...");
-          } else {
-            let pkg = await this.json(this["#base"] + this.packagePath);
+          const pkg = this.info[".brainsatplay"].package;
+          if (pkg)
             this.setPackage(pkg);
-          }
+          else
+            console.error("No package.json has been included...");
         }
-        if (!this.info) {
-          const graphPath = this.join(this.base, this.graphPath);
-          const pluginPath = this.join(this.base, this.pluginPath);
-          let graph = await this.json(graphPath);
-          let plugins = await this.json(pluginPath);
-          this.info[".brainsatplay"] = {
-            graph,
-            plugins
-          };
-        }
-        this.plugins = await this.setPlugins();
         this.tree = await this.setTree();
       }
     };
@@ -9385,7 +9355,7 @@ var Plugins = class {
     };
     this.get = async (name2, type7 = "metadata") => {
       if (type7 === "module")
-        await this.module(name2);
+        return await this.module(name2);
       else {
         let path = this.getPath(name2);
         if (this["#plugins"][name2] && !path.includes(this.base) && !path.includes("package.json")) {
@@ -9482,6 +9452,7 @@ var EditableApp = class {
       ignore: [".DS_Store", ".git"],
       debug: false
     };
+    this.packagePath = "/package.json";
     this.parentNode = document.body;
     this.compile = async () => {
       const packageContents = await (await this.filesystem.open("package.json")).body;
@@ -9490,20 +9461,26 @@ var EditableApp = class {
         this.plugins = new Plugins(this.filesystem);
         await this.plugins.init();
         if (file) {
-          const mainPlugins = await this.plugins.get(packageContents.main, "plugins");
+          const main = await this.plugins.get(packageContents.main, "module");
           const mainGraph = await this.plugins.get(packageContents.main, "graph");
           this.active.setPackage(packageContents);
-          await this.active.setPlugins(mainPlugins);
+          await this.active.setInfo(main);
           await this.active.setTree(mainGraph);
         } else
           console.error('The "main" field in the supplied package.json is not pointing to an appropriate entrypoint.');
       }
     };
+    this.join = join;
     this.createFilesystem = async (input, options = this.options) => {
       if (!input && !(this.filesystem instanceof LocalSystem))
         input = this.filesystem;
       else
         this.filesystem = input;
+      try {
+        new URL(input ?? "").href;
+        input = this.join(input, this.packagePath);
+      } catch {
+      }
       let clonedOptions = Object.assign({}, options);
       let system = new LocalSystem(input, clonedOptions);
       return await system.init().then(() => system).catch(() => void 0);
@@ -9517,12 +9494,11 @@ var EditableApp = class {
     this.start = async (input) => {
       await this.stop();
       const system = await this.createFilesystem(input);
+      this.active = new App(void 0, this.options);
       if (system) {
         this.filesystem = system;
-        this.active = new App(this.filesystem.root, this.options);
         this.active.compile = this.compile;
       } else {
-        this.active = new App(this.filesystem, this.options);
         delete this.filesystem;
         delete this.compile;
       }

@@ -16,8 +16,8 @@ import * as brainsatplay from './external/brainsatplay/index.esm.js';
 // }
 
 // -------------- Setup Default App --------------
-const appInfo = 'https://raw.githubusercontent.com/brainsatplay/brainsatplay-starter-kit/main/package.json'
-// const appInfo = 'https://raw.githubusercontent.com/brainsatplay/brainsatplay-starter-kit/nightly/package.json'
+const appInfo = 'https://raw.githubusercontent.com/brainsatplay/brainsatplay-starter-kit/main'
+// const appInfo = 'https://raw.githubusercontent.com/brainsatplay/brainsatplay-starter-kit/nightly'
 // const appInfo = `./app/index.js` // Automatically relative to window.location.href
 // import appInfo from '../brainsatplay-starter-kit/index.js' // not actually editable when loaded this way
 // import appInfo from '../htil/content/signals/index.js' // not actually editable when loaded this way
