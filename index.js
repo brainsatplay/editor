@@ -16,11 +16,12 @@ import * as brainsatplay from './external/brainsatplay/index.esm.js';
 // }
 
 // -------------- Setup Default App --------------
-const appInfo = 'https://raw.githubusercontent.com/brainsatplay/brainsatplay-starter-kit/main'
+// const appInfo = 'https://raw.githubusercontent.com/brainsatplay/brainsatplay-starter-kit/main'
 // const appInfo = 'https://raw.githubusercontent.com/brainsatplay/brainsatplay-starter-kit/nightly'
 // const appInfo = `./app/index.js` // Automatically relative to window.location.href
 // import appInfo from '../brainsatplay-starter-kit/index.js' // not actually editable when loaded this way
 // import appInfo from '../htil/content/signals/index.js' // not actually editable when loaded this way
+import appInfo from '../htil/content/phaser/index.js' // not actually editable when loaded this way
 
 // -------------- Setup Default App --------------
 let app = new brainsatplay.editable.App(undefined, {
@@ -85,8 +86,11 @@ async function start(input){
         editor.start()
     }
 
+    console.log('Starting')
    const ok = await app.start(input).catch(e => console.error('Invalid App', e))
-    if (ok) editor.setGraph(app.active.graph)
+   console.log('ok', ok)
+
+    if (ok) editor.setGraph(app.active?.graph ?? app.graph)
 
     console.log('App', app)
 

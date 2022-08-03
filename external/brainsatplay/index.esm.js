@@ -125,6 +125,7 @@ var GraphNode = class {
   constructor(properties = {}, parentNode, graph) {
     this.nodes = /* @__PURE__ */ new Map();
     this.arguments = /* @__PURE__ */ new Map();
+    this.initial = {};
     this.state = state;
     this.isLooping = false;
     this.isAnimating = false;
@@ -362,38 +363,41 @@ var GraphNode = class {
       if (node.branch) {
         let keys = Object.keys(node.branch);
         await Promise.all(keys.map(async (k) => {
-          if (typeof output === "object") {
-            if (typeof node.branch[k].if === "object")
-              node.branch[k].if = stringifyFast(node.branch[k].if);
-            if (stringifyFast(output) === node.branch[k].if) {
+          if (typeof node.branch[k].if === "object")
+            node.branch[k].if = stringifyFast(node.branch[k].if);
+          let pass = false;
+          if (typeof output === "object")
+            if (stringifyFast(output) === node.branch[k].if)
+              pass = true;
+            else if (output === node.branch[k].if)
+              pass = true;
+            else
+              pass = true;
+          if (pass) {
+            if (node.branch[k].then instanceof GraphNode) {
+              if (Array.isArray(output))
+                await node.branch[k].then._run(node.branch[k].then, node, ...output);
+              else
+                await node.branch[k].then._run(node.branch[k].then, node, ...output);
+            } else if (typeof node.branch[k].then === "function") {
+              if (Array.isArray(output))
+                await node.branch[k].then(...output);
+              else
+                await node.branch[k].then(output);
+            } else if (typeof node.branch[k].then === "string") {
+              if (node.graph)
+                node.branch[k].then = node.graph.nodes.get(node.branch[k].then);
+              else
+                node.branch[k].then = node.nodes.get(node.branch[k].then);
               if (node.branch[k].then instanceof GraphNode) {
                 if (Array.isArray(output))
-                  await node.branch[k].then.run(...output);
+                  await node.branch[k].then._run(node.branch[k].then, node, ...output);
                 else
-                  await node.branch[k].then.run(output);
-              } else if (typeof node.branch[k].then === "function") {
-                if (Array.isArray(output))
-                  await node.branch[k].then(...output);
-                else
-                  await node.branch[k].then(output);
-              } else if (typeof node.branch[k].then === "string") {
-                if (node.graph)
-                  node.branch[k].then = node.graph.nodes.get(node.branch[k].then);
-                else
-                  node.branch[k].then = node.nodes.get(node.branch[k].then);
-                if (node.branch[k].then instanceof GraphNode) {
-                  if (Array.isArray(output))
-                    await node.branch[k].then.run(...output);
-                  else
-                    await node.branch[k].then.run(output);
-                }
+                  await node.branch[k].then._run(node.branch[k].then, node, ...output);
               }
-              return true;
             }
-          } else {
-            await node.branch[k].then(output);
-            return true;
           }
+          return pass;
         }));
       }
     };
@@ -579,6 +583,27 @@ var GraphNode = class {
       }
       return result;
     };
+    this.getProps = (node = this) => {
+      return {
+        tag: node.tag,
+        operator: node.operator,
+        graph: node.graph,
+        children: node.children,
+        parent: node.parent,
+        forward: node.forward,
+        backward: node.bacward,
+        loop: node.loop,
+        animate: node.animate,
+        frame: node.frame,
+        delay: node.delay,
+        recursive: node.recursive,
+        repeat: node.repeat,
+        branch: node.branch,
+        oncreate: node.oncreate,
+        DEBUGNODE: node.DEBUGNODE,
+        ...this.initial
+      };
+    };
     this.setProps = (props = {}) => {
       let tmp = Object.assign({}, props);
       if (tmp.children) {
@@ -685,6 +710,18 @@ var GraphNode = class {
               if (!n.children[key])
                 n.children[key] = n.nodes.get(key);
               if (n.children[key] instanceof GraphNode) {
+                if (n.graph) {
+                  let props = n.children[key].getProps();
+                  delete props.parent;
+                  delete props.graph;
+                  if (n.source)
+                    n.children[key] = new GraphNode(props, n, n.source);
+                  else {
+                    if (props.tag)
+                      props.tag = `${props.tag}${n.graph.nNodes + 1}`;
+                    n.children[key] = new GraphNode(props, n, n.graph);
+                  }
+                }
                 n.nodes.set(n.children[key].tag, n.children[key]);
                 if (!(n.children[key].tag in n))
                   n[n.children[key].tag] = n.children[key].tag;
@@ -855,8 +892,7 @@ var GraphNode = class {
             if (!this.source)
               this.source = hasnode;
           }
-        }
-        if (parentNode?.nodes) {
+        } else if (parentNode?.nodes) {
           let hasnode = parentNode.nodes.get(properties.tag);
           if (hasnode) {
             Object.assign(this, hasnode);
@@ -880,6 +916,11 @@ var GraphNode = class {
           }
         }
         properties.arguments = this.arguments;
+      }
+      let keys = Object.getOwnPropertyNames(this);
+      for (const key in properties) {
+        if (!keys.includes(key))
+          this.initial[key] = properties[key];
       }
       Object.assign(this, properties);
       if (!this.tag) {
@@ -1203,10 +1244,10 @@ var Graph = class {
       });
     };
     this.tag = tag ? tag : `graph${Math.floor(Math.random() * 1e11)}`;
-    if (tree || Object.keys(this.tree).length > 0)
-      this.setTree(tree);
     if (props)
       Object.assign(this, props);
+    if (tree || Object.keys(this.tree).length > 0)
+      this.setTree(tree);
   }
 };
 function reconstructObject(json = "{}") {
@@ -1917,11 +1958,55 @@ var Service = class extends Graph {
           service.load();
           routes = service.routes;
         }
-      } else if (routes instanceof Graph) {
+      } else if (routes instanceof Graph || routes.source instanceof Graph) {
         service = routes;
         routes = {};
+        let name2;
+        if (includeClassName) {
+          name2 = service.name;
+          if (!name2) {
+            name2 = service.tag;
+            service.name = name2;
+          }
+          if (!name2) {
+            name2 = `graph${Math.floor(Math.random() * 1e15)}`;
+            service.name = name2;
+            service.tag = name2;
+          }
+        }
         service.nodes.forEach((node) => {
           routes[node.tag] = node;
+          let checked = {};
+          let checkChildGraphNodes = (nd, prev) => {
+            if (!checked[nd.tag] || prev && includeClassName && !checked[prev?.tag + routeFormat + nd.tag]) {
+              if (!prev)
+                checked[nd.tag] = true;
+              else
+                checked[prev.tag + routeFormat + nd.tag] = true;
+              if (nd instanceof Graph || nd.source instanceof Graph) {
+                if (includeClassName) {
+                  let nm = nd.name;
+                  if (!nm) {
+                    nm = nd.tag;
+                    nd.name = nm;
+                  }
+                  if (!nm) {
+                    nm = `graph${Math.floor(Math.random() * 1e15)}`;
+                    nd.name = nm;
+                    nd.tag = nm;
+                  }
+                }
+                nd.nodes.forEach((n) => {
+                  if (includeClassName)
+                    routes[nd.tag + routeFormat + n.tag] = n;
+                  else if (!routes[n.tag])
+                    routes[n.tag] = n;
+                  checkChildGraphNodes(n, nd);
+                });
+              }
+            }
+          };
+          checkChildGraphNodes(node);
         });
       } else if (typeof routes === "object") {
         let name2 = routes.constructor.name;
@@ -2344,6 +2429,7 @@ var DOMService = class extends Graph {
           return props;
         };
       let node = new GraphNode(options, void 0, this);
+      elm.node = node;
       let divs = Array.from(elm.querySelectorAll("*"));
       if (generateChildElementNodes) {
         divs = divs.map((d, i) => this.addElement({ element: d }));
@@ -2480,6 +2566,7 @@ var DOMService = class extends Graph {
           return props;
         };
       let node = new GraphNode(options, void 0, this);
+      elm.node = node;
       this.components[completeOptions.id] = {
         element: elm,
         class: CustomElement,
@@ -2575,6 +2662,7 @@ var DOMService = class extends Graph {
           return props;
         };
       let node = new GraphNode(options, void 0, this);
+      elm.node = node;
       let canvas = elm.querySelector("canvas");
       if (completeOptions.style)
         Object.assign(canvas.style, completeOptions.style);
@@ -2624,11 +2712,55 @@ var DOMService = class extends Graph {
           service.load();
           routes = service.routes;
         }
-      } else if (routes instanceof Graph) {
+      } else if (routes instanceof Graph || routes.source instanceof Graph) {
         service = routes;
         routes = {};
+        let name2;
+        if (includeClassName) {
+          name2 = service.name;
+          if (!name2) {
+            name2 = service.tag;
+            service.name = name2;
+          }
+          if (!name2) {
+            name2 = `graph${Math.floor(Math.random() * 1e15)}`;
+            service.name = name2;
+            service.tag = name2;
+          }
+        }
         service.nodes.forEach((node) => {
           routes[node.tag] = node;
+          let checked = {};
+          let checkChildGraphNodes = (nd, prev) => {
+            if (!checked[nd.tag] || prev && includeClassName && !checked[prev?.tag + routeFormat + nd.tag]) {
+              if (!prev)
+                checked[nd.tag] = true;
+              else
+                checked[prev.tag + routeFormat + nd.tag] = true;
+              if (nd instanceof Graph || nd.source instanceof Graph) {
+                if (includeClassName) {
+                  let nm = nd.name;
+                  if (!nm) {
+                    nm = nd.tag;
+                    nd.name = nm;
+                  }
+                  if (!nm) {
+                    nm = `graph${Math.floor(Math.random() * 1e15)}`;
+                    nd.name = nm;
+                    nd.tag = nm;
+                  }
+                }
+                nd.nodes.forEach((n) => {
+                  if (includeClassName)
+                    routes[nd.tag + routeFormat + n.tag] = n;
+                  else if (!routes[n.tag])
+                    routes[n.tag] = n;
+                  checkChildGraphNodes(n, nd);
+                });
+              }
+            }
+          };
+          checkChildGraphNodes(node);
         });
       } else if (typeof routes === "object") {
         let name2 = routes.constructor.name;
@@ -2697,7 +2829,7 @@ var DOMService = class extends Graph {
             if (r.template) {
               if (!routes[route].tag)
                 routes[route].tag = route;
-              this.addComponent(routes[route]);
+              this.addComponent(routes[route], routes[route].generateChildElementNodes);
             } else if (r.context) {
               if (!routes[route].tag)
                 routes[route].tag = route;
@@ -2705,7 +2837,7 @@ var DOMService = class extends Graph {
             } else if (r.tagName || r.element) {
               if (!routes[route].tag)
                 routes[route].tag = route;
-              this.addElement(routes[route]);
+              this.addElement(routes[route], routes[route].generateChildElementNodes);
             }
             if (r.get) {
               if (typeof r.get == "object") {
@@ -3089,7 +3221,7 @@ var Router = class {
     this.routes = this.service.routes;
     this.services = {};
     this.loadDefaultRoutes = false;
-    this.load = (service, linkServices = true) => {
+    this.load = (service, linkServices = true, includeClassName = true) => {
       if (!(service instanceof Graph) && typeof service === "function") {
         service = new service({ loadDefaultRoutes: this.loadDefaultRoutes }, service.name);
         service.load();
@@ -3110,7 +3242,7 @@ var Router = class {
         } else
           this.services[service.constructor.name] = service;
       }
-      this.service.load(service, linkServices);
+      this.service.load(service, includeClassName);
       if (linkServices) {
         for (const name2 in this.services) {
           this.service.nodes.forEach((n) => {
@@ -3549,11 +3681,11 @@ var Router = class {
       this.loadDefaultRoutes = options.loadDefaultRoutes;
     }
     if (this.loadDefaultRoutes)
-      this.load(this.defaultRoutes, options?.linkServices);
+      this.load(this.defaultRoutes, options?.linkServices, options?.includeClassName);
     if (Array.isArray(services)) {
-      services.forEach((s) => this.load(s, options?.linkServices));
+      services.forEach((s) => this.load(s, options?.linkServices, options?.includeClassName));
     } else if (typeof services === "object") {
-      Object.keys(services).forEach((s) => this.load(services[s], options?.linkServices));
+      Object.keys(services).forEach((s) => this.load(services[s], options?.linkServices, options?.includeClassName));
     }
   }
 };
@@ -3618,6 +3750,15 @@ var ArgumentGraphExtension = {
     }
     if (operatorArgs.size === 0)
       operatorArgs.set("trigger", void 0);
+    let entries = Array.from(operatorArgs.entries());
+    const restrictedOne = ["self", "node"];
+    const restrictedTwo = ["origin", "parent", "graph", "router"];
+    const notRestrictedOne = entries.reduce((a, b) => a * (restrictedOne.includes(b[0]) ? 0 : 1), 1);
+    const notRestrictedTwo = entries.reduce((a, b) => a * (restrictedTwo.includes(b[0]) ? 0 : 1), 1);
+    if (!notRestrictedOne)
+      restrictedOne.forEach((k) => operatorArgs.delete(k));
+    if (!notRestrictedTwo)
+      restrictedTwo.forEach((k) => operatorArgs.delete(k));
     const instanceTree = {};
     Array.from(operatorArgs.entries()).forEach(([arg], i) => {
       instanceTree[arg] = {
@@ -3625,16 +3766,15 @@ var ArgumentGraphExtension = {
         operator: (input) => {
           operatorArgs.set(arg, input);
           if (i === 0) {
-            const nodeToRun = app.graph.nodes.get(treeEntry.tag);
-            const res = nodeToRun.run();
-            return res;
+            const nodeToRun = app.router.routes[`${app.name}.${treeEntry.tag}`];
+            return nodeToRun.run();
           }
           return input;
         }
       };
     });
     const propsCopy = Object.assign({}, treeEntry);
-    propsCopy.operator = (...args) => {
+    propsCopy.operator = (self, origin, ...args) => {
       let updatedArgs = [];
       let i = 0;
       operatorArgs.forEach((v, k) => {
@@ -3647,8 +3787,14 @@ var ArgumentGraphExtension = {
         updatedArgs.push(...update);
         i++;
       });
-      const res = treeEntry.operator(...updatedArgs);
-      return res;
+      if (!notRestrictedOne && !notRestrictedTwo)
+        return treeEntry.operator(self, origin, ...updatedArgs);
+      else if (!notRestrictedOne)
+        return treeEntry.operator(self, ...updatedArgs);
+      else if (!notRestrictedTwo)
+        return treeEntry.operator(origin, ...updatedArgs);
+      else
+        return treeEntry.operator(...updatedArgs);
     };
     let graph = new Graph(instanceTree, treeEntry.tag, propsCopy);
     return graph;
@@ -3696,7 +3842,7 @@ var App = class {
         console.warn("no info specified.");
     };
     this.setInfo = (info) => {
-      this.info = info;
+      this.info = Object.assign({}, info);
       const appMetadata = this.info[".brainsatplay"];
       for (let key in appMetadata) {
         appMetadata[key] = this.checkJSONConversion(appMetadata[key]);
@@ -3715,7 +3861,11 @@ var App = class {
       const nodes = Object.entries(graph.nodes ?? {});
       await Promise.all(nodes.map(async ([tag, info]) => {
         const [cls, id] = tag.split("_");
-        const clsInfo = this.plugins[cls] ?? {};
+        const clsInfo = Object.assign({}, this.plugins[cls]) ?? {};
+        for (let key in clsInfo) {
+          if (typeof clsInfo[key] === "object")
+            clsInfo[key] = Object.assign({}, clsInfo[key]);
+        }
         if (clsInfo[".brainsatplay"]) {
           const app = this.nested[tag] = new App(clsInfo, {
             name: tag,
@@ -3724,7 +3874,7 @@ var App = class {
           });
           app.setParent(this.parentNode);
           await app.start();
-          this.router.load(app.graph, false);
+          this.router.load(app.graph, false, true);
           if (app.info[".brainsatplay"].graph.ports) {
             let input = app.info[".brainsatplay"].graph.ports.input;
             let output = app.info[".brainsatplay"].graph.ports.output;
@@ -3748,9 +3898,8 @@ var App = class {
           }
           tree[tag] = app.graph;
         } else {
-          let properties = Object.assign({}, clsInfo);
-          properties.tag = tag;
-          properties = Object.assign(properties, info);
+          clsInfo.tag = tag;
+          const properties = Object.assign(clsInfo, info);
           const instance = extensions_default.arguments.transform(properties, this);
           tree[tag] = instance;
         }
@@ -3832,7 +3981,7 @@ var App = class {
           routes: this.tree
         }, this.parentNode);
         if (!this.isNested) {
-          this.router.load(this.graph, false);
+          this.router.load(this.graph, false, true);
           this.graph.nodes.forEach((node) => {
             if (node instanceof GraphNode) {
               if (node.loop) {
@@ -3855,7 +4004,7 @@ var App = class {
         this.nested[k].stop();
       if (this.graph)
         this.graph.nodes.forEach((n) => {
-          this.graph.removeTree(n);
+          // this.graph.removeTree(n);
           n.stopNode();
           n.unsubscribe();
         });
@@ -9471,11 +9620,7 @@ var EditableApp = class {
       }
     };
     this.join = join;
-    this.createFilesystem = async (input, options = this.options) => {
-      if (!input && !(this.filesystem instanceof LocalSystem))
-        input = this.filesystem;
-      else
-        this.filesystem = input;
+    this.createFilesystem = async (input = this.filesystem, options = this.options) => {
       try {
         new URL(input ?? "").href;
         input = this.join(input, this.packagePath);
@@ -9491,7 +9636,8 @@ var EditableApp = class {
       } else
         console.warn("Input is not a valid HTML element", parentNode);
     };
-    this.start = async (input) => {
+    this.start = async (input = this.filesystem) => {
+      this.filesystem = input;
       await this.stop();
       const system = await this.createFilesystem(input);
       this.active = new App(void 0, this.options);
@@ -9499,6 +9645,7 @@ var EditableApp = class {
         this.filesystem = system;
         this.active.compile = this.compile;
       } else {
+        this.active.set(input);
         delete this.filesystem;
         delete this.compile;
       }
@@ -9513,7 +9660,8 @@ var EditableApp = class {
     };
     this.save = async () => {
       await this.stop();
-      await this.filesystem.save();
+      if (this.filesystem)
+        await this.filesystem.save();
       await this.active.start();
     };
     this.filesystem = input;

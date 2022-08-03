@@ -68,6 +68,8 @@ export class Editor extends LitElement {
     }
 
     app: any
+    active: any
+
     modal = new Modal()
     ui = document.createElement('visualscript-tab') 
     files = new Panel()
@@ -99,7 +101,7 @@ export class Editor extends LitElement {
       this.app = app
     }
 
-    setGraph = (graph) => {
+    setGraph = async (graph) => {
 
       // Setting Context Menu Response
       global.context.set('visualscript-graph-editor', {
@@ -141,8 +143,83 @@ export class Editor extends LitElement {
         }
       })
 
-      this.graph.set(this.app.active.graph ?? this.app.graph) // Set tree on graph
+      await this.graph.set(graph) // Set tree on graph
+
+      setTimeout(() => {
+      // Set Responses After Setting Graph
+      this.graph.onedgeadded = (edge) => {        
+        // change active graph
+        const info = this.getEdgeInfo(edge)
+        info.output.addChildren([info.input])
+        console.warn('TODO: Fix awaiting edges', edge, info.output)
+
+        // add to file
+        this.updateFile('.brainsatplay/index.graph.json', {
+          edges: {
+            [info.output]: {
+              [info.input]: {}
+            }
+          }
+        })
+      }
+
+      this.graph.onnodeadded = (node) => {
+
+        // change active graph
+        const active = this.app.active ?? this.app
+        active.graph.add(node.info)
+
+        // add to file
+        // TODO
+      }
+
+      this.graph.onedgeremoved = (edge) => {
+        // update active graph
+        const info = this.getEdgeInfo(edge)
+        info.output.removeTree(info.input)
+
+        // update file
+        // TODO
+      }
+
+      this.graph.onnoderemoved = (node) => {
+        // update active graph
+        this.app.graph.removeTree(node.name)
+
+        // update file
+        // TODO
+      }
+    }, 1000)
+
     }
+
+    updateFile = (path, updateObj) => {
+      if (this.app?.filesystem) {
+        const file = this.app?.filesystem.open(path)
+        const body = file.body
+
+        const update = (base, updateObj) => {
+          for (let key in updateObj) {
+            if (updateObj[key] !== base[key]) base[key] = updateObj[key]
+            if (typeof updateObj[key] === 'object') update(base[key], updateObj[key])
+          }
+        }
+
+        update(body, updateObj)
+
+      }
+    }
+
+    getEdgeInfo = (edge: any) => {
+      const active = this.app.active ?? this.app
+      const output = active.graph.nodes.get(edge.output.tag)
+      const input = active.graph.nodes.get(edge.input.tag)
+      return {
+        output, 
+        input
+      }
+    }
+
 
     setUI = (ui) => {
       this.ui.innerHTML = ''
